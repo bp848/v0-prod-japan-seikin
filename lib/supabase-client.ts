@@ -1,5 +1,6 @@
 // Supabase クライアントのユーティリティ関数
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import type { FundManagementOrganization } from "@/types"
 
 // Re-export createClient for external use
 export { createClient } from "@supabase/supabase-js"
@@ -60,7 +61,7 @@ export interface ChatMessage {
 }
 
 export class SupabaseService {
-  constructor(private client = supabaseAdmin) {}
+  constructor(private client: SupabaseClient = supabaseAdmin) {}
 
   // PDF Documents
   async getPdfDocuments(
@@ -114,7 +115,7 @@ export class SupabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as ChatSession
   }
 
   async getChatSessions(limit = 10) {
@@ -146,6 +147,61 @@ export class SupabaseService {
       .select("file_name, party_name, region, groq_index_id, ocr_text")
       .eq("status", "completed")
       .limit(limit)
+  }
+
+  // Fund Management Organizations
+  async getFundManagementOrganizations(
+    filters: {
+      page?: number
+      limit?: number
+      politicianId?: number
+      search?: string
+      officeType?: string
+      reportYear?: number
+      jurisdiction?: string
+      isActive?: boolean
+    } = {},
+  ): Promise<{ data: FundManagementOrganization[] | null; count: number | null; error: any }> {
+    const { page = 1, limit = 20, politicianId, search, officeType, reportYear, jurisdiction, isActive } = filters
+    const offset = (page - 1) * limit
+
+    let query = this.client
+      .from("fund_management_organizations")
+      .select("*, politicians (id, name)", { count: "exact" }) // Example join with politicians
+      .order("updated_at", { ascending: false })
+
+    if (politicianId) {
+      query = query.eq("politician_id", politicianId)
+    }
+    if (search) {
+      query = query.ilike("organization_name", `%${search}%`)
+    }
+    if (officeType) {
+      query = query.eq("office_type", officeType)
+    }
+    if (reportYear) {
+      query = query.eq("report_year", reportYear)
+    }
+    if (jurisdiction) {
+      query = query.eq("jurisdiction", jurisdiction)
+    }
+    if (isActive !== undefined) {
+      query = query.eq("is_active", isActive)
+    }
+
+    const { data, error, count } = await query.range(offset, offset + limit - 1)
+    return { data: data as FundManagementOrganization[] | null, count, error }
+  }
+
+  async getFundManagementOrganizationById(
+    id: number,
+  ): Promise<{ data: FundManagementOrganization | null; error: any }> {
+    const { data, error } = await this.client
+      .from("fund_management_organizations")
+      .select("*, politicians (id, name)")
+      .eq("id", id)
+      .single()
+    return { data: data as FundManagementOrganization | null, error }
   }
 }
 

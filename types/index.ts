@@ -34,6 +34,7 @@ export type EntityType =
   | "npo_organization" // NPO団体
   | "service_provider" // サービス提供者
   | "government_agency" // 政府機関
+  | "fund_management_organization" // 資金管理団体
   | "unknown"
 
 export interface CytoscapeNodeData {
@@ -46,4 +47,19 @@ export interface CytoscapeNodeData {
 export interface NodeSizeConfig {
   radius: number
   importance: number
+}
+
+export interface FundManagementOrganization {
+  id: number
+  politician_id: number | null // Assuming it can be nullable if a fund management organization isn't directly tied to one politician initially
+  organization_name: string
+  office_type: string | null
+  report_year: number | null
+  notified_date: string | null // ISO date string
+  jurisdiction: string | null
+  is_active: boolean | null
+  created_at: string // ISO datetime string
+  updated_at: string // ISO datetime string
+  // Optional: if you plan to join with politicians table
+  politicians?: { name: string; id: number } // Example, adjust as needed
 }
