@@ -13,6 +13,14 @@ export async function GET() {
       .limit(10)
 
     if (error) throw error
+    if (!logs) {
+      // logsがnullまたはundefinedの場合のフォールバック
+      return NextResponse.json({
+        success: true,
+        activities: [],
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     // アクティビティに変換
     const activities = logs.map((log) => {
@@ -42,7 +50,7 @@ export async function GET() {
       }
 
       // アクションテキストを生成
-      let action = log.message || "ログメッセージなし" // Default message if log.message is null/undefined
+      let action = log.message || "ログメッセージなし" // log.messageがnull/undefinedの場合のデフォルトメッセージ
       if (log.component === "pdf-upload") {
         action = `PDFアップロード: ${log.message || "詳細不明"}`
       } else if (log.component === "pdf-ocr") {
