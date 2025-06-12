@@ -37,18 +37,18 @@ export async function GET() {
         type = "error"
       } else if (log.level === "warning") {
         type = "warning"
-      } else if (log.message.includes("完了") || log.message.includes("成功")) {
+      } else if (log.message && (log.message.includes("完了") || log.message.includes("成功"))) {
         type = "success"
       }
 
       // アクションテキストを生成
-      let action = log.message
+      let action = log.message || "ログメッセージなし" // Default message if log.message is null/undefined
       if (log.component === "pdf-upload") {
-        action = `PDFアップロード: ${log.message}`
+        action = `PDFアップロード: ${log.message || "詳細不明"}`
       } else if (log.component === "pdf-ocr") {
-        action = `OCR処理: ${log.message}`
+        action = `OCR処理: ${log.message || "詳細不明"}`
       } else if (log.component === "ai-chat") {
-        action = `AIチャット: ${log.message}`
+        action = `AIチャット: ${log.message || "詳細不明"}`
       }
 
       return {
