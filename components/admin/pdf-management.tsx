@@ -162,7 +162,7 @@ export default function PDFManagement() {
                 スキップ ({currentFileNumber}/{totalFiles})
               </div>
             ),
-            description: data.message || `ファイル「${file.name}」は既に存在するためスキップされました。`,
+            description: data.message || `ファイル「${file.name}」は既に存在するためスキップされました。`, // Use data.message
             variant: "default",
           })
           skippedCount++
@@ -171,10 +171,10 @@ export default function PDFManagement() {
             title: (
               <div className="flex items-center">
                 <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-                アップロード成功 ({currentFileNumber}/${totalFiles})
+                アップロード成功 ({currentFileNumber}/{totalFiles})
               </div>
             ),
-            description: `ファイル「${file.name}」: ${data.message}`,
+            description: `ファイル「${file.name}」: ${data.message}`, // Use data.message from backend
             variant: "default",
           })
           newUploadSuccessCount++
