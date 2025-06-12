@@ -9,7 +9,7 @@ export async function GET() {
     const { data: logs, error } = await supabase
       .from("system_logs")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }) // Assuming 'created_at' is the correct timestamp column
       .limit(10)
 
     if (error) throw error
@@ -17,7 +17,7 @@ export async function GET() {
     // アクティビティに変換
     const activities = logs.map((log) => {
       // 経過時間を計算
-      const logTime = new Date(log.created_at)
+      const logTime = new Date(log.created_at) // Ensure this column name is correct
       const now = new Date()
       const diffMs = now.getTime() - logTime.getTime()
       const diffMins = Math.floor(diffMs / 60000)
@@ -37,18 +37,20 @@ export async function GET() {
         type = "error"
       } else if (log.level === "warning") {
         type = "warning"
-      } else if (log.message.includes("完了") || log.message.includes("成功")) {
+      } else if (log.message && (log.message.includes("完了") || log.message.includes("成功"))) {
+        // Added null check for log.message
         type = "success"
       }
 
       // アクションテキストを生成
-      let action = log.message
+      const messageContent = log.message || "詳細不明" // Fallback for null message
+      let action = messageContent
       if (log.component === "pdf-upload") {
-        action = `PDFアップロード: ${log.message}`
+        action = `PDFアップロード: ${messageContent}`
       } else if (log.component === "pdf-ocr") {
-        action = `OCR処理: ${log.message}`
+        action = `OCR処理: ${messageContent}`
       } else if (log.component === "ai-chat") {
-        action = `AIチャット: ${log.message}`
+        action = `AIチャット: ${messageContent}`
       }
 
       return {
