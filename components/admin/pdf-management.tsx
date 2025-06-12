@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback } from "react" // useCallback を追加
+
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,20 +12,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  FileText,
-  Upload,
-  RefreshCw,
-  Search,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Info,
-  UploadCloud,
-} from "lucide-react" // Info, UploadCloud を追加
+import { FileText, Upload, RefreshCw, Search, AlertCircle, CheckCircle, XCircle, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { cn } from "@/lib/utils" // cn を追加
 
 interface PdfDocument {
   id: string
@@ -60,8 +49,8 @@ export default function PDFManagement() {
     total: 0,
     totalPages: 0,
   })
-  const [isDraggingOver, setIsDraggingOver] = useState(false) // ドラッグ状態の管理
 
+  // フィルター状態
   const [filters, setFilters] = useState({
     status: "all",
     party: "all",
@@ -71,30 +60,36 @@ export default function PDFManagement() {
 
   const { toast } = useToast()
 
-  const fetchDocuments = useCallback(async () => {
-    // useCallback でラップ
+  // PDFリスト取得
+  const fetchDocuments = async () => {
     setLoading(true)
     setError(null)
+
     try {
       const queryParams = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
       })
+
       if (filters.status !== "all") queryParams.append("status", filters.status)
       if (filters.party !== "all") queryParams.append("party", filters.party)
       if (filters.region !== "all") queryParams.append("region", filters.region)
       if (filters.search) queryParams.append("search", filters.search)
 
       const response = await fetch(`/api/pdf/list?${queryParams.toString()}`)
+
       if (!response.ok) {
         throw new Error(`PDFリスト取得エラー: ${response.status} ${response.statusText}`)
       }
+
       const data = await response.json()
+
       if (!data.success) {
         throw new Error(data.error || "PDFリスト取得に失敗しました")
       }
+
       setDocuments(data.documents || [])
-      setPagination(data.pagination || pagination) // pagination が null の場合のフォールバックを追加
+      setPagination(data.pagination || pagination)
     } catch (err) {
       console.error("PDFリスト取得エラー:", err)
       setError(err instanceof Error ? err.message : "PDFリストの取得中にエラーが発生しました")
@@ -106,188 +101,103 @@ export default function PDFManagement() {
     } finally {
       setLoading(false)
     }
-  }, [pagination.page, pagination.limit, filters, toast]) // 依存配列を更新
+  }
 
+  // 初回ロードとフィルター変更時のデータ取得
   useEffect(() => {
     fetchDocuments()
-  }, [fetchDocuments]) // fetchDocuments を依存配列に追加
+  }, [pagination.page, pagination.limit, filters])
 
-  // 共通のファイルアップロード処理関数
-  const processAndUploadFiles = async (filesToProcess: FileList | null) => {
-    if (!filesToProcess || filesToProcess.length === 0) return
+  // ファイルアップロード処理
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
 
     setUploading(true)
-    let newUploadSuccessCount = 0
-    let skippedCount = 0
-    let errorCount = 0
-    const totalFiles = filesToProcess.length
 
-    toast({
-      title: "一括アップロード開始",
-      description: `${totalFiles}個のファイルを処理します。`,
-    })
+    try {
+      const file = files[0]
 
-    for (let i = 0; i < filesToProcess.length; i++) {
-      const file = filesToProcess[i]
-      const currentFileNumber = i + 1
-      try {
-        if (file.type !== "application/pdf") {
-          throw new Error(`ファイル「${file.name}」はPDF形式ではありません。`)
-        }
-        if (file.size > 50 * 1024 * 1024) {
-          // 50MB
-          throw new Error(`ファイル「${file.name}」のサイズが50MBを超えています。`)
-        }
-
-        const formData = new FormData()
-        formData.append("file", file)
-
-        toast({
-          title: `処理中 (${currentFileNumber}/${totalFiles})`,
-          description: `ファイル「${file.name}」をアップロードしています...`,
-        })
-
-        const response = await fetch("/api/pdf/upload", {
-          method: "POST",
-          body: formData,
-        })
-
-        const data = await response.json()
-
-        if (data.isDuplicate) {
-          toast({
-            title: (
-              <div className="flex items-center">
-                <Info className="h-4 w-4 mr-2 text-blue-500" />
-                スキップ ({currentFileNumber}/{totalFiles})
-              </div>
-            ),
-            description: data.message || `ファイル「${file.name}」は既に存在するためスキップされました。`, // Use data.message
-            variant: "default",
-          })
-          skippedCount++
-        } else if (data.success) {
-          toast({
-            title: (
-              <div className="flex items-center">
-                <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-                アップロード成功 ({currentFileNumber}/{totalFiles})
-              </div>
-            ),
-            description: `ファイル「${file.name}」: ${data.message}`, // Use data.message from backend
-            variant: "default",
-          })
-          newUploadSuccessCount++
-        } else {
-          let errorMessage = data.error || `ファイル「${file.name}」のアップロード処理に失敗しました。`
-          if (data.details) {
-            errorMessage += ` 詳細: ${data.details}`
-          }
-          throw new Error(errorMessage)
-        }
-      } catch (err) {
-        console.error(`ファイル「${file.name}」の処理エラー:`, err)
-        toast({
-          title: (
-            <div className="flex items-center">
-              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
-              処理エラー ({currentFileNumber}/{totalFiles})
-            </div>
-          ),
-          description: `ファイル「${file.name}」: ${err instanceof Error ? err.message : "処理中にエラーが発生しました"}`,
-          variant: "destructive",
-        })
-        errorCount++
+      // ファイルタイプチェック
+      if (file.type !== "application/pdf") {
+        throw new Error("PDFファイルのみアップロード可能です")
       }
-    }
 
-    setUploading(false)
-    fetchDocuments() // アップロード後にリストを更新
+      // ファイルサイズチェック
+      if (file.size > 50 * 1024 * 1024) {
+        throw new Error("ファイルサイズは50MB以下にしてください")
+      }
 
-    let summaryMessage = `${newUploadSuccessCount}個の新規アップロード成功。`
-    if (skippedCount > 0) summaryMessage += ` ${skippedCount}個スキップ (重複)。`
-    if (errorCount > 0) summaryMessage += ` ${errorCount}個エラー。`
-    else summaryMessage += ` ${errorCount}個エラー。`
+      const formData = new FormData()
+      formData.append("file", file)
 
-    toast({
-      title: "一括アップロード処理完了",
-      description: summaryMessage,
-      variant: errorCount > 0 ? "destructive" : "default",
-    })
-  }
-
-  // ファイル選択ボタンからのアップロード
-  const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    // --- デバッグ用ログここから ---
-    if (event.target.files) {
-      console.log("選択されたファイル数 (handleFileInputChange):", event.target.files.length)
-      console.log("選択されたファイルリスト (handleFileInputChange):", event.target.files)
-      toast({
-        title: "デバッグ情報: ファイル選択",
-        description: `ファイル選択ダイアログで ${event.target.files.length} 個のファイルが選択されました。ブラウザのコンソールで詳細を確認してください。`,
-        duration: 9000, // 長めに表示
+      const response = await fetch("/api/pdf/upload", {
+        method: "POST",
+        body: formData,
       })
-    } else {
-      console.log("ファイルが選択されていません (handleFileInputChange)。")
+
+      const data = await response.json()
+
+      if (!data.success && data.error) {
+        throw new Error(data.error)
+      }
+
       toast({
-        title: "デバッグ情報: ファイル選択",
-        description: "ファイルが選択されていません。",
+        title: data.isDuplicate ? "重複ファイル" : "アップロード成功",
+        description: data.message,
+        variant: data.isDuplicate ? "default" : "default",
+      })
+
+      // リストを更新
+      fetchDocuments()
+    } catch (err) {
+      console.error("ファイルアップロードエラー:", err)
+      toast({
+        title: "アップロードエラー",
+        description: err instanceof Error ? err.message : "ファイルのアップロード中にエラーが発生しました",
         variant: "destructive",
       })
-    }
-    // --- デバッグ用ログここまで ---
-
-    await processAndUploadFiles(event.target.files)
-    event.target.value = "" // ファイル選択をリセット
-  }
-
-  // ドラッグアンドドロップのハンドラ
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!uploading) {
-      // アップロード中でなければドラッグ状態にする
-      setIsDraggingOver(true)
+    } finally {
+      setUploading(false)
+      // 入力フィールドをリセット
+      event.target.value = ""
     }
   }
 
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setIsDraggingOver(false)
-  }
-
-  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setIsDraggingOver(false)
-    if (uploading) return // アップロード中はドロップを無視
-
-    const droppedFiles = event.dataTransfer.files
-    if (droppedFiles && droppedFiles.length > 0) {
-      await processAndUploadFiles(droppedFiles)
-    }
-  }
-
+  // OCR・インデックス処理開始
   const handleProcessDocument = async (documentId: string) => {
     setProcessing((prev) => ({ ...prev, [documentId]: true }))
+
     try {
       const response = await fetch("/api/pdf/index", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentIds: [documentId], reprocess: true }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documentIds: [documentId],
+          reprocess: true,
+        }),
       })
+
       const data = await response.json()
+
       if (!data.success) {
         throw new Error(data.error || "処理開始に失敗しました")
       }
+
       const result = data.results?.find((r: any) => r.documentId === documentId)
+
       toast({
         title: result?.success ? "処理開始" : "処理エラー",
         description: result?.message || result?.error || "処理を開始しました",
         variant: result?.success ? "default" : "destructive",
       })
-      setTimeout(() => fetchDocuments(), 2000)
+
+      // 少し待ってからリストを更新
+      setTimeout(() => {
+        fetchDocuments()
+      }, 2000)
     } catch (err) {
       console.error("処理開始エラー:", err)
       toast({
@@ -300,6 +210,7 @@ export default function PDFManagement() {
     }
   }
 
+  // ステータスに応じたバッジ表示
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
@@ -326,7 +237,6 @@ export default function PDFManagement() {
           </Badge>
         )
       case "pending_upload":
-      case "pending":
       case "text_extraction_completed":
         return (
           <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
@@ -339,15 +249,18 @@ export default function PDFManagement() {
     }
   }
 
+  // ページネーション処理
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > pagination.totalPages) return
     setPagination((prev) => ({ ...prev, page: newPage }))
   }
 
+  // フィルター適用
   const applyFilters = () => {
-    setPagination((prev) => ({ ...prev, page: 1 }))
+    setPagination((prev) => ({ ...prev, page: 1 })) // フィルター変更時は1ページ目に戻る
   }
 
+  // ローディング中のスケルトン表示
   if (loading && documents.length === 0) {
     return (
       <div className="space-y-6">
@@ -358,6 +271,7 @@ export default function PDFManagement() {
             アップロード
           </Button>
         </div>
+
         <Card>
           <CardHeader>
             <CardTitle>PDFファイル一覧</CardTitle>
@@ -385,15 +299,15 @@ export default function PDFManagement() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">PDF管理</h1>
         <div className="flex gap-2">
-          <Button onClick={() => fetchDocuments()} variant="outline" disabled={loading || uploading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading || uploading ? "animate-spin" : ""}`} />
+          <Button onClick={() => fetchDocuments()} variant="outline" disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             更新
           </Button>
           <Label htmlFor="file-upload" className="cursor-pointer">
             <Button asChild disabled={uploading}>
               <div>
                 <Upload className="h-4 w-4 mr-2" />
-                {uploading ? "処理中..." : "ファイルを選択"}
+                {uploading ? "アップロード中..." : "アップロード"}
               </div>
             </Button>
           </Label>
@@ -402,9 +316,8 @@ export default function PDFManagement() {
             type="file"
             accept=".pdf"
             className="hidden"
-            onChange={handleFileInputChange}
+            onChange={handleFileUpload}
             disabled={uploading}
-            multiple // 複数ファイル選択を許可
           />
         </div>
       </div>
@@ -416,32 +329,6 @@ export default function PDFManagement() {
         </Alert>
       )}
 
-      {/* ドラッグアンドドロップエリア */}
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={cn(
-          "border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ease-in-out",
-          isDraggingOver
-            ? "border-blue-500 bg-blue-500/10"
-            : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500",
-          uploading && "cursor-not-allowed opacity-70",
-        )}
-      >
-        <UploadCloud className={cn("mx-auto h-12 w-12", isDraggingOver ? "text-blue-500" : "text-gray-400")} />
-        <p className={cn("mt-2 text-sm", isDraggingOver ? "text-blue-600" : "text-gray-500 dark:text-gray-400")}>
-          {uploading
-            ? "アップロード処理中です..."
-            : isDraggingOver
-              ? "ここにファイルをドロップ"
-              : "ここにPDFファイルをドラッグ＆ドロップするか、上記のボタンから選択してください。"}
-        </p>
-        {uploading && (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">処理が完了するまでお待ちください。</p>
-        )}
-      </div>
-
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -450,6 +337,7 @@ export default function PDFManagement() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* フィルター */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div>
               <Label htmlFor="status-filter">ステータス</Label>
@@ -464,10 +352,11 @@ export default function PDFManagement() {
                   <SelectItem value="indexing_processing">インデックス処理中</SelectItem>
                   <SelectItem value="ocr_failed">OCR失敗</SelectItem>
                   <SelectItem value="indexing_failed">インデックス失敗</SelectItem>
-                  <SelectItem value="pending">処理待機中</SelectItem>
+                  <SelectItem value="pending_upload">アップロード済み</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
             <div>
               <Label htmlFor="party-filter">政党</Label>
               <Select value={filters.party} onValueChange={(value) => setFilters({ ...filters, party: value })}>
@@ -486,6 +375,7 @@ export default function PDFManagement() {
                 </SelectContent>
               </Select>
             </div>
+
             <div>
               <Label htmlFor="region-filter">地域</Label>
               <Select value={filters.region} onValueChange={(value) => setFilters({ ...filters, region: value })}>
@@ -501,6 +391,7 @@ export default function PDFManagement() {
                 </SelectContent>
               </Select>
             </div>
+
             <div className="flex gap-2">
               <div className="flex-1">
                 <Label htmlFor="search-filter">検索</Label>
@@ -518,6 +409,7 @@ export default function PDFManagement() {
             </div>
           </div>
 
+          {/* ファイル一覧テーブル */}
           {documents.length > 0 ? (
             <div className="border rounded-md">
               <Table>
@@ -551,7 +443,6 @@ export default function PDFManagement() {
                           onClick={() => handleProcessDocument(doc.id)}
                           disabled={
                             processing[doc.id] ||
-                            uploading || // アップロード中も無効化
                             doc.status === "ocr_processing" ||
                             doc.status === "indexing_processing"
                           }
@@ -561,9 +452,7 @@ export default function PDFManagement() {
                           ) : (
                             <RefreshCw className="h-4 w-4 mr-2" />
                           )}
-                          {doc.status === "completed" || doc.status === "ocr_failed" || doc.status === "indexing_failed"
-                            ? "再処理"
-                            : "処理開始"}
+                          {doc.status === "completed" ? "再処理" : "処理開始"}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -572,17 +461,25 @@ export default function PDFManagement() {
               </Table>
             </div>
           ) : (
-            !loading && ( // ローディング中でない場合のみ「ファイルがありません」を表示
-              <div className="flex flex-col items-center justify-center p-8 text-center border rounded-md">
-                <FileText className="h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium mb-2">PDFファイルがありません</h3>
-                <p className="text-gray-500 mb-4">
-                  上記のエリアにファイルをドラッグ＆ドロップするか、「ファイルを選択」ボタンからPDFをアップロードしてください。
-                </p>
-              </div>
-            )
+            <div className="flex flex-col items-center justify-center p-8 text-center border rounded-md">
+              <FileText className="h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium mb-2">PDFファイルがありません</h3>
+              <p className="text-gray-500 mb-4">
+                PDFファイルをアップロードして、OCRとインデックス処理を行ってください。
+              </p>
+              <Label htmlFor="empty-file-upload" className="cursor-pointer">
+                <Button asChild>
+                  <div>
+                    <Upload className="h-4 w-4 mr-2" />
+                    PDFをアップロード
+                  </div>
+                </Button>
+              </Label>
+              <Input id="empty-file-upload" type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+            </div>
           )}
 
+          {/* ページネーション */}
           {documents.length > 0 && (
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-gray-500">
@@ -594,7 +491,7 @@ export default function PDFManagement() {
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(1)}
-                  disabled={pagination.page === 1 || uploading}
+                  disabled={pagination.page === 1}
                 >
                   最初
                 </Button>
@@ -602,18 +499,18 @@ export default function PDFManagement() {
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(pagination.page - 1)}
-                  disabled={pagination.page === 1 || uploading}
+                  disabled={pagination.page === 1}
                 >
                   前へ
                 </Button>
                 <span className="flex items-center px-3">
-                  {pagination.page} / {pagination.totalPages || 1}
+                  {pagination.page} / {pagination.totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(pagination.page + 1)}
-                  disabled={pagination.page === pagination.totalPages || uploading}
+                  disabled={pagination.page === pagination.totalPages}
                 >
                   次へ
                 </Button>
@@ -621,7 +518,7 @@ export default function PDFManagement() {
                   variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(pagination.totalPages)}
-                  disabled={pagination.page === pagination.totalPages || uploading}
+                  disabled={pagination.page === pagination.totalPages}
                 >
                   最後
                 </Button>
